@@ -1,0 +1,15 @@
+{
+  "name": "clippy-desktop",
+  "version": "0.1.0",
+  "description": "Clippy Desktop App",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+}
