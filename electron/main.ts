@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } from 'electron';
 import * as path from 'path';
-import { nut } from '@nut-tree/nut-js';
+import { exec } from 'child_process';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -32,7 +32,7 @@ const createWindow = (): void => {
       nodeIntegration: false,
       webSecurity: false,
     },
-    show: false, // Show when ready
+    show: false,
   });
 
   // Load the app
@@ -48,10 +48,9 @@ const createWindow = (): void => {
     mainWindow?.show();
   });
 
-  // Handle mouse events - click through when not focused
+  // Handle mouse events
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
   
-  // Enable mouse events on mouse over
   mainWindow.webContents.on('dom-ready', () => {
     mainWindow?.setIgnoreMouseEvents(false);
   });
@@ -59,11 +58,9 @@ const createWindow = (): void => {
 
 // Create tray icon
 const createTray = (): void => {
-  const iconPath = path.join(__dirname, '../../assets/icon.png');
-  const trayIcon = nativeImage.createFromPath(iconPath);
-  const resizedIcon = trayIcon.resize({ width: 16, height: 16 });
-  
-  tray = new Tray(resizedIcon);
+  // Use a simple colored circle as fallback icon
+  const emptyIcon = nativeImage.createEmpty();
+  tray = new Tray(emptyIcon);
   
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Clippy', click: () => mainWindow?.show() },
@@ -85,51 +82,27 @@ const createTray = (): void => {
 };
 
 // IPC handlers for system automation
-ipcMain.handle('macro:keyboard', async (_event, keys: string[]) => {
-  try {
-    await nut.keyboard.type(...(keys as any));
-    return { success: true };
-  } catch (error) {
-    console.error('Keyboard macro failed:', error);
-    return { success: false, error: String(error) };
-  }
+ipcMain.handle('macro:keyboard', async () => {
+  return { success: false, error: 'Keyboard macros not implemented yet' };
 });
 
-ipcMain.handle('macro:keyCombo', async (_event, combo: string) => {
-  try {
-    // Parse combo like "ctrl+shift+t"
-    const keys = combo.toLowerCase().split('+');
-    const modifiers = keys.slice(0, -1);
-    const key = keys[keys.length - 1];
-    
-    // @ts-ignore
-    await nut.keyboard.type(key, ...(modifiers as any));
-    return { success: true };
-  } catch (error) {
-    console.error('Key combo failed:', error);
-    return { success: false, error: String(error) };
-  }
+ipcMain.handle('macro:keyCombo', async () => {
+  return { success: false, error: 'Key combos not implemented yet' };
 });
 
-ipcMain.handle('macro:mouseClick', async (_event, options: { x: number; y: number; button?: string }) => {
-  try {
-    if (options.x !== undefined && options.y !== undefined) {
-      await nut.mouse.move({ x: options.x, y: options.y });
-    }
-    await nut.mouse.click(options.button === 'right' ? nut.Button.RIGHT : nut.Button.LEFT);
-    return { success: true };
-  } catch (error) {
-    console.error('Mouse click failed:', error);
-    return { success: false, error: String(error) };
-  }
+ipcMain.handle('macro:mouseClick', async () => {
+  return { success: false, error: 'Mouse automation not implemented yet' };
 });
 
 ipcMain.handle('system:launchApp', async (_event, appName: string) => {
   try {
-    const { exec } = require('child_process');
-    exec(`open -a "${appName}"`, (err: any) => {
-      if (err) console.error('Failed to launch app:', err);
-    });
+    if (process.platform === 'darwin') {
+      exec(`open -a "${appName}"`);
+    } else if (process.platform === 'win32') {
+      exec(`start "" "${appName}"`);
+    } else {
+      exec(appName);
+    }
     return { success: true };
   } catch (error) {
     console.error('Launch app failed:', error);
@@ -137,26 +110,20 @@ ipcMain.handle('system:launchApp', async (_event, appName: string) => {
   }
 });
 
-ipcMain.handle('system:focusWindow', async (_event, windowTitle: string) => {
-  try {
-    const { exec } = require('child_process');
-    exec(`osascript -e 'tell application "System Events" to tell process "${windowTitle}" to set frontmost to true'`, (err: any) => {
-      if (err) console.error('Failed to focus window:', err);
-    });
-    return { success: true };
-  } catch (error) {
-    console.error('Focus window failed:', error);
-    return { success: false, error: String(error) };
-  }
+ipcMain.handle('system:focusWindow', async () => {
+  return { success: false, error: 'Window focus not implemented yet' };
 });
 
 // Speech handlers
 ipcMain.handle('speech:speak', async (_event, text: string) => {
   try {
-    const { exec } = require('child_process');
-    exec(`say "${text.replace(/"/g, '\\"')}"`, (err: any) => {
-      if (err) console.error('TTS failed:', err);
-    });
+    if (process.platform === 'darwin') {
+      exec(`say "${text.replace(/"/g, '\\"')}"`);
+    } else if (process.platform === 'win32') {
+      // Windows has built-in TTS via PowerShell
+      const psScript = `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak("${text.replace(/"/g, '\\"')}");`;
+      exec(`powershell.exe -Command "${psScript}"`);
+    }
     return { success: true };
   } catch (error) {
     console.error('TTS failed:', error);
@@ -188,7 +155,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // Don't quit - keep in tray
+  // Don't quit on macOS - stay in tray
 });
 
 // Prevent multiple instances
