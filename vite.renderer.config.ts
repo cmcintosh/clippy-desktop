@@ -7,12 +7,13 @@ export default defineConfig({
   root: '.',
   base: './',
   build: {
-    outDir: 'dist/renderer',
+    outDir: '.vite/renderer',
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        settings: resolve(__dirname, 'settings.html'),
       },
     },
   },

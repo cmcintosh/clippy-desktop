@@ -6,11 +6,24 @@ declare global {
   interface Window {
     electronAPI: {
       sendKeyCombo: (combo: string) => Promise<{ success: boolean }>;
+      sendKeys: (keys: string[]) => Promise<{ success: boolean }>;
+      mouseClick: (options: { x: number; y: number; button?: string }) => Promise<{ success: boolean }>;
       launchApp: (appName: string) => Promise<{ success: boolean }>;
       focusWindow: (title: string) => Promise<{ success: boolean }>;
+      screenshot: () => Promise<{ success: boolean; path?: string }>;
       speak: (text: string) => Promise<{ success: boolean }>;
       minimize: () => Promise<void>;
       hide: () => Promise<void>;
+      show: () => Promise<void>;
+      settings: {
+        get: () => Promise<any>;
+        getValue: (key: string) => Promise<any>;
+        set: (key: string, value: any) => Promise<{ success: boolean }>;
+        setMultiple: (settings: any) => Promise<{ success: boolean }>;
+        reset: () => Promise<{ success: boolean; settings: any }>;
+        open: () => Promise<void>;
+        close: () => Promise<void>;
+      };
     };
   }
 }
@@ -75,14 +88,45 @@ function App() {
   const [isAwake, setIsAwake] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [settings, setSettings] = useState<any>(null);
+  const [wsUrl, setWsUrl] = useState(import.meta.env.VITE_OPENCLAW_WS_URL || 'ws://localhost:18789');
 
   // WebSocket refs for reconnection
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // WebSocket URL with fallback
-  const wsUrl = import.meta.env.VITE_OPENCLAW_WS_URL || 'ws://localhost:18789';
+  // Load settings on mount
+  useEffect(() => {
+    if (window.electronAPI?.settings?.get) {
+      window.electronAPI.settings.get().then((loadedSettings) => {
+        setSettings(loadedSettings);
+        if (loadedSettings?.openclaw?.url) {
+          setWsUrl(loadedSettings.openclaw.url);
+        }
+      });
+    }
+  }, []);
+
+  // Listen for settings changes
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onSettingsChanged?.((event, newSettings) => {
+      setSettings(newSettings);
+      if (newSettings?.openclaw?.url && newSettings.openclaw.url !== wsUrl) {
+        // URL changed, reconnect
+        setWsUrl(newSettings.openclaw.url);
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+        setReconnectAttempts(0);
+        setTimeout(connectWebSocket, 100);
+      }
+    });
+    
+    return () => {
+      unsubscribe?.();
+    };
+  }, [wsUrl]);
 
   // Connect to OpenClaw with reconnection logic
   const connectWebSocket = useCallback(() => {
@@ -462,6 +506,9 @@ function App() {
         </button>
         <button onClick={() => handleCommand('reconnect')} title="Reconnect to OpenClaw">
           🔄 Reconnect
+        </button>
+        <button onClick={() => window.electronAPI?.settings?.open()} title="Open Settings">
+          ⚙️ Settings
         </button>
       </div>
     </div>

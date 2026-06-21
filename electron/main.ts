@@ -1,35 +1,59 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell, globalShortcut } from 'electron';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
+import * as fs from 'fs';
+import './settings';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
 // Sanitize input to prevent command injection
 function sanitizeInput(input: string): string {
-  // Remove dangerous characters that could be used for injection
   return input.replace(/[;&|`$(){}[\]\\]/g, '');
 }
 
 // Safe app launcher that validates input
 function validateAppName(appName: string): boolean {
-  // Whitelist of allowed characters for app names
   const validPattern = /^[a-zA-Z0-9\s._-]+$/;
   return validPattern.test(appName) && appName.length < 100;
 }
 
-// Safe text for TTS (prevent command injection)
+// Safe text for TTS
 function sanitizeTTS(text: string): string {
-  // Escape quotes and remove dangerous characters
-  return text.replace(/["'`]/g, '').substring(0, 500); // Limit length
+  return text.replace(/["'`]/g, '').substring(0, 500);
+}
+
+// Create a simple tray icon programmatically
+function createTrayIcon(): nativeImage {
+  const size = 64;
+  // Create a simple blue circle with eyes (Clippy-like)
+  const canvas = `
+    <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="bodyGrad" cx="50%" cy="30%" r="50%">
+          <stop offset="0%" style="stop-color:#60a5fa"/>
+          <stop offset="100%" style="stop-color:#2563eb"/>
+        </radialGradient>
+      </defs>
+      <!-- Body -->
+      <ellipse cx="32" cy="35" rx="28" ry="26" fill="url(#bodyGrad)" stroke="#1d4ed8" stroke-width="2"/>
+      <!-- Eyes -->
+      <ellipse cx="22" cy="28" rx="6" ry="8" fill="white"/>
+      <ellipse cx="42" cy="28" rx="6" ry="8" fill="white"/>
+      <circle cx="24" cy="28" r="3" fill="black"/>
+      <circle cx="40" cy="28" r="3" fill="black"/>
+      <!-- Smile -->
+      <path d="M 20 45 Q 32 52 44 45" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    </svg>
+  `;
+  
+  return nativeImage.createFromBuffer(Buffer.from(canvas));
 }
 
 const createWindow = (): void => {
-  // Get primary display
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
 
-  // Create the browser window.
   mainWindow = new BrowserWindow({
     width: 400,
     height: 500,
@@ -47,9 +71,10 @@ const createWindow = (): void => {
       webSecurity: process.env.NODE_ENV !== 'development',
     },
     show: false,
+    // Icon for taskbar
+    icon: createTrayIcon(),
   });
 
-  // Load the app
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -57,12 +82,10 @@ const createWindow = (): void => {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
-  // Show when loaded
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
 
-  // Handle mouse events
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
   
   mainWindow.webContents.on('dom-ready', () => {
@@ -70,38 +93,9 @@ const createWindow = (): void => {
   });
 };
 
-// Create tray icon with fallback
 const createTray = (): void => {
-  let trayIcon: nativeImage;
-  
-  try {
-    // Try to load icon from assets
-    const iconPath = path.join(__dirname, '../assets/icon.png');
-    trayIcon = nativeImage.createFromPath(iconPath);
-    
-    // Resize if needed
-    if (trayIcon.getSize().width > 16) {
-      trayIcon = trayIcon.resize({ width: 16, height: 16 });
-    }
-  } catch {
-    // Fallback: create a simple colored icon programmatically
-    console.log('[Clippy] Using fallback tray icon');
-    const size = { width: 16, height: 16 };
-    
-    // Create a simple canvas-based icon
-    trayIcon = nativeImage.createEmpty();
-    
-    // Alternative: use a data URL for a simple icon
-    const svgIcon = `
-      <svg width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="8" cy="8" r="7" fill="#0078d4"/>
-        <circle cx="6" cy="6" r="1.5" fill="white"/>
-        <circle cx="10" cy="6" r="1.5" fill="white"/>
-        <path d="M5 10 Q8 12 11 10" stroke="white" stroke-width="1.5" fill="none"/>
-      </svg>
-    `;
-    trayIcon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svgIcon).toString('base64')}`);
-  }
+  const trayIcon = createTrayIcon();
+  trayIcon.setTemplateImage(true);
   
   tray = new Tray(trayIcon);
   
@@ -123,9 +117,11 @@ const createTray = (): void => {
     { 
       label: 'Settings', 
       click: () => {
-        console.log('Settings clicked - not implemented');
+        // Open settings via IPC
+        const { ipcMain } = require('electron');
+        ipcMain.emit('open-settings');
       },
-      enabled: false
+      enabled: true
     },
     { type: 'separator' },
     { 
@@ -149,115 +145,215 @@ const createTray = (): void => {
   });
 };
 
-// IPC handlers for system automation
-ipcMain.handle('macro:keyboard', async () => {
-  return { success: false, error: 'Keyboard macros not implemented yet' };
+// IPC handlers
+ipcMain.handle('macro:keyboard', async (_event, keys: string[]) => {
+  try {
+    // Validate keys
+    const validKeys = keys.every(k => /^[a-zA-Z0-9]$/.test(k));
+    if (!validKeys) {
+      return { success: false, error: 'Invalid keys' };
+    }
+    
+    // Platform-specific implementation
+    if (process.platform === 'win32') {
+      const keyString = keys.join(' ');
+      // Use powershell to send keys
+      const script = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keyString}')`;
+      spawn('powershell.exe', ['-Command', script], { detached: true });
+    } else if (process.platform === 'darwin') {
+      // macOS - use AppleScript or clicable
+      // This is a placeholder - would need proper implementation
+      return { success: false, error: 'macOS keyboard macros not yet implemented' };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
 });
 
 ipcMain.handle('macro:keyCombo', async (_event, combo: string) => {
   try {
-    // Validate combo format (e.g., "command+shift+3")
     const validPattern = /^[a-zA-Z0-9+]+$/;
     if (!validPattern.test(combo)) {
       return { success: false, error: 'Invalid key combo format' };
     }
     
-    // Platform-specific implementation would go here
-    // For now, return not implemented
-    return { success: false, error: 'Key combos not fully implemented yet' };
+    if (process.platform === 'win32') {
+      // Parse combo like "ctrl+shift+s"
+      const keys = combo.toLowerCase().split('+');
+      const modifiers: string[] = [];
+      const key = keys.filter(k => {
+        if (['ctrl', 'alt', 'shift', 'win'].includes(k)) {
+          modifiers.push(k);
+          return false;
+        }
+        return true;
+      })[0];
+      
+      if (!key) {
+        return { success: false, error: 'No key specified in combo' };
+      }
+      
+      // Build SendKeys format
+      const modifierString = modifiers.map(m => {
+        switch(m) {
+          case 'ctrl': return '^';
+          case 'alt': return '%';
+          case 'shift': return '+';
+          case 'win': return '#';
+          default: return '';
+        }
+      }).join('');
+      
+      const script = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${modifierString}{${key.toUpperCase()}}')`;
+      spawn('powershell.exe', ['-Command', script], { detached: true });
+      
+      return { success: true };
+    }
+    
+    return { success: false, error: 'Platform not yet supported' };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('macro:mouseClick', async () => {
-  return { success: false, error: 'Mouse automation not implemented yet' };
+ipcMain.handle('macro:mouseClick', async (_event, options: { x: number; y: number; button?: string }) => {
+  try {
+    const { x, y, button = 'left' } = options;
+    
+    if (process.platform === 'win32') {
+      // PowerShell mouse click
+      const clickType = button === 'right' ? 'Right' : 'Left';
+      const script = `
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y})
+        $mouse_event = Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int flags, int dx, int dy, int buttons, int extra);' -Name Win32Functions -Namespace Win32Functions -PassThru
+        $mouse_event::mouse_event(0x0002, 0, 0, 0, 0) # Left down
+        $mouse_event::mouse_event(0x0004, 0, 0, 0, 0) # Left up
+      `;
+      spawn('powershell.exe', ['-Command', script], { detached: true });
+      return { success: true };
+    }
+    
+    return { success: false, error: 'Mouse automation not implemented for this platform' };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
 });
 
-// Safe app launcher with input validation
 ipcMain.handle('system:launchApp', async (_event, appName: string) => {
   try {
-    // Validate app name to prevent injection
     if (!validateAppName(appName)) {
-      console.error('[Clippy] Invalid app name:', appName);
       return { success: false, error: 'Invalid app name' };
     }
     
-    const sanitizedAppName = sanitizeInput(appName);
-    console.log('[Clippy] Launching app:', sanitizedAppName);
+    const sanitized = sanitizeInput(appName);
     
     if (process.platform === 'darwin') {
-      // Use spawn instead of exec for better security
-      const child = spawn('open', ['-a', sanitizedAppName], { 
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
+      spawn('open', ['-a', sanitized], { detached: true });
     } else if (process.platform === 'win32') {
-      // On Windows, use shell.openExternal or spawn
-      const child = spawn('cmd', ['/c', 'start', '', sanitizedAppName], {
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
+      // Try multiple methods for Windows
+      spawn('cmd', ['/c', 'start', '', sanitized], { detached: true });
     } else {
-      // Linux - try to spawn directly
-      const child = spawn(sanitizedAppName, [], {
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
+      spawn(sanitized, [], { detached: true });
     }
     
     return { success: true };
   } catch (error) {
-    console.error('[Clippy] Launch app failed:', error);
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('system:focusWindow', async () => {
-  return { success: false, error: 'Window focus not implemented yet' };
+ipcMain.handle('system:screenshot', async () => {
+  try {
+    if (process.platform === 'win32') {
+      // Windows - use Snipping Tool or PowerShell
+      const timestamp = Date.now();
+      const screenshotPath = path.join(require('os').homedir(), 'Pictures', `clippy-screenshot-${timestamp}.png`);
+      
+      // Use PowerShell to take screenshot
+      const script = `
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+        $bitmap.Save('${screenshotPath.replace(/\\/g, '\\\\')}')
+        $graphics.Dispose()
+        $bitmap.Dispose()
+      `;
+      
+      spawn('powershell.exe', ['-Command', script], { detached: true });
+      return { success: true, path: screenshotPath };
+    } else if (process.platform === 'darwin') {
+      // macOS screenshot
+      const timestamp = Date.now();
+      const screenshotPath = path.join(require('os').homedir(), 'Desktop', `clippy-screenshot-${timestamp}.png`);
+      spawn('screencapture', [screenshotPath], { detached: true });
+      return { success: true, path: screenshotPath };
+    }
+    
+    return { success: false, error: 'Screenshots not supported on this platform' };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
 });
 
-// Safe TTS handler with input validation
+ipcMain.handle('system:focusWindow', async (_event, title: string) => {
+  try {
+    if (!validateAppName(title)) {
+      return { success: false, error: 'Invalid window title' };
+    }
+    
+    if (process.platform === 'win32') {
+      // Use PowerShell to find and focus window
+      const script = `
+        Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class Win32 {
+          [DllImport("user32.dll")]
+          public static extern bool SetForegroundWindow(IntPtr hWnd);
+          [DllImport("user32.dll")]
+          public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        }
+        "@
+        $hwnd = [Win32]::FindWindow($null, '${title}')
+        if ($hwnd -ne 0) {
+          [Win32]::SetForegroundWindow($hwnd)
+        }
+      `;
+      spawn('powershell.exe', ['-Command', script], { detached: true });
+      return { success: true };
+    }
+    
+    return { success: false, error: 'Window focus not fully implemented' };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
 ipcMain.handle('speech:speak', async (_event, text: string) => {
   try {
-    // Validate and sanitize input
     if (!text || typeof text !== 'string') {
       return { success: false, error: 'Invalid text' };
     }
     
-    const sanitizedText = sanitizeTTS(text);
-    console.log('[Clippy] Speaking:', sanitizedText.substring(0, 50) + '...');
+    const sanitized = sanitizeTTS(text);
     
     if (process.platform === 'darwin') {
-      // macOS say command
-      const child = spawn('say', [sanitizedText], { 
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
+      spawn('say', [sanitized], { detached: true });
     } else if (process.platform === 'win32') {
-      // Windows PowerShell TTS
-      const psScript = `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('${sanitizedText.replace(/'/g, "''")}');`;
-      const child = spawn('powershell.exe', ['-Command', psScript], {
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
+      const script = `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('${sanitized.replace(/'/g, "''")}')`;
+      spawn('powershell.exe', ['-Command', script], { detached: true });
     } else {
-      // Linux - try espeak or festival
-      const child = spawn('espeak', [sanitizedText], {
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref();
+      spawn('espeak', [sanitized], { detached: true });
     }
     
     return { success: true };
   } catch (error) {
-    console.error('[Clippy] TTS failed:', error);
     return { success: false, error: String(error) };
   }
 });
@@ -283,6 +379,16 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   
+  // Register global shortcut for wake (Ctrl+Shift+C)
+  globalShortcut.register('CommandOrControl+Shift+C', () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow?.show();
+      mainWindow?.focus();
+    }
+  });
+  
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -291,7 +397,12 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // Don't quit on macOS - stay in tray
+  // Don't quit on macOS
+});
+
+app.on('will-quit', () => {
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll();
 });
 
 // Prevent multiple instances

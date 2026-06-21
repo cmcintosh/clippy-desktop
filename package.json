@@ -36,6 +36,7 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
+    "electron-store": "^11.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

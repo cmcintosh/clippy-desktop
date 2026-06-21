@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // System
   launchApp: (appName: string) => ipcRenderer.invoke('system:launchApp', appName),
   focusWindow: (title: string) => ipcRenderer.invoke('system:focusWindow', title),
+  screenshot: () => ipcRenderer.invoke('system:screenshot'),
   
   // Window
   minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -19,6 +20,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Speech
   speak: (text: string) => ipcRenderer.invoke('speech:speak', text),
+  
+  // Settings
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    getValue: (key: string) => ipcRenderer.invoke('settings:getValue', key),
+    set: (key: string, value: any) => ipcRenderer.invoke('settings:set', key, value),
+    setMultiple: (settings: any) => ipcRenderer.invoke('settings:setMultiple', settings),
+    reset: () => ipcRenderer.invoke('settings:reset'),
+    open: () => ipcRenderer.invoke('settings:open'),
+    close: () => ipcRenderer.invoke('settings:close'),
+  },
+  
+  // Events from main process
+  onToggleSleep: (callback: () => void) => {
+    ipcRenderer.on('toggle-sleep', callback);
+    return () => ipcRenderer.removeAllListeners('toggle-sleep');
+  },
+  onSettingsChanged: (callback: (event: any, settings: any) => void) => {
+    ipcRenderer.on('settings-changed', callback);
+    return () => ipcRenderer.removeAllListeners('settings-changed');
+  },
 });
 
 export {};
