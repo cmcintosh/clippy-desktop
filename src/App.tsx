@@ -35,11 +35,13 @@ function App() {
 
   useEffect(() => {
     // Connect to OpenClaw WebSocket gateway
-    const websocket = new WebSocket('ws://localhost:8080/ws');
+    // Use env var or default to localhost:18789 (OpenClaw default port)
+    const wsUrl = import.meta.env.VITE_OPENCLAW_WS_URL || 'ws://localhost:18789';
+    const websocket = new WebSocket(wsUrl);
     
     websocket.onopen = () => {
       setIsConnected(true);
-      console.log('Connected to OpenClaw');
+      console.log('Connected to OpenClaw at', wsUrl);
     };
     
     websocket.onmessage = (event) => {
