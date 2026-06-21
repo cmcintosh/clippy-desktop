@@ -30,7 +30,7 @@ const createWindow = (): void => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      webSecurity: process.env.NODE_ENV !== 'development', // Only disable in dev for HMR
     },
     show: false,
   });

@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Macros
   sendKeyCombo: (combo: string) => ipcRenderer.invoke('macro:keyCombo', combo),
   sendKeys: (keys: string[]) => ipcRenderer.invoke('macro:keyboard', keys),
-  mouseClick: (options: { x: number; y: number; button?: string }) =
+  mouseClick: (options: { x: number; y: number; button?: string }) =>
     ipcRenderer.invoke('macro:mouseClick', options),
   
   // System

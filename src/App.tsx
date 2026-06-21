@@ -55,7 +55,7 @@ function App() {
         }
         
         // Speak response
-        if (data.speak)>{
+        if (data.speak) {
           speak(data.content);
         }
       }
@@ -179,7 +179,7 @@ function App() {
           <span className={`connection-status ${isConnected ? 'connected' : ''}`}>
             {isConnected ? '● Connected' : '○ Disconnected'}
           </span>
-          <button className="minimize-btn" onClick={() => window.electronAPI?.minimize()}›_‹/button>
+          <button className="minimize-btn" onClick={() => window.electronAPI?.minimize()}>_</button>
         </div>
 
         <div className="messages">
