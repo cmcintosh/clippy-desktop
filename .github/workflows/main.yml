@@ -1,0 +1,16 @@
+name: Build and Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run build && npm run make
+      - uses: actions/upload-artifact@v4
+        with: { name: clippy-desktop-windows, path: out/make/squirrel.windows/x64/*.exe }
