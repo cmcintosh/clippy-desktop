@@ -11,7 +11,7 @@ export default defineConfig({
     rollupOptions: {
       external: ['electron'],
     },
-    outDir: 'dist/electron',
+    outDir: '.vite',
     emptyOutDir: false,
   },
 });

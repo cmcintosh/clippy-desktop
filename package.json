@@ -2,7 +2,7 @@
   "name": "clippy-desktop",
   "version": "1.0.0",
   "description": "AI-powered desktop companion with voice control and system automation",
-  "main": "dist/electron/main.js",
+  "main": ".vite/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:electron\" \"npm run dev:vite\"",
     "dev:electron": "tsc -p electron/tsconfig.json --watch",
