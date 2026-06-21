@@ -3,8 +3,14 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
+// This module is optional - app works without it (just no install/uninstall shortcuts)
+try {
+  if (require('electron-squirrel-startup')) {
+    app.quit();
+  }
+} catch (err) {
+  // Module not available, continue without Windows installer integration
+  console.log('[Clippy] electron-squirrel-startup not available, continuing without Windows shortcuts');
 }
 
 let mainWindow: BrowserWindow | null = null;
