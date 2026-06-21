@@ -10,6 +10,7 @@ yarn.lock
 dist/
 build/
 out/
+.vite/
 
 # Environment variables
 .env
