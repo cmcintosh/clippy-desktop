@@ -11,7 +11,11 @@
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:vite": "vite build",
     "package": "electron-forge package",
+    "package:win": "electron-forge package --platform=win32",
+    "package:mac": "electron-forge package --platform=darwin",
     "make": "electron-forge make",
+    "make:win": "electron-forge make --platform=win32",
+    "make:mac": "electron-forge make --platform=darwin",
     "publish": "electron-forge publish"
   },
   "devDependencies": {
